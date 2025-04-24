@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Топ-20 акций МБ по изменению цены</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .stock-table th, .stock-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .stock-table th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+        }
+        .stock-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .positive {
+            color: green;
+        }
+        .negative {
+            color: red;
+        }
+        .last-update {
+            font-size: 0.9em;
+            color: #666;
+            text-align: right;
+            margin-top: 10px;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <h1>Топ-20 акций МБ по относительному изменению цены</h1>
+    <div id="loading" class="loader"></div>
+    <div id="content" style="display: none;">
+        <table class="stock-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Тикер</th>
+                    <th>Название</th>
+                    <th>Текущая цена</th>
+                    <th>Изменение</th>
+                    <th>Изменение %</th>
+                </tr>
+            </thead>
+            <tbody id="stock-data">
+                <!-- Данные будут загружены сюда -->
+            </tbody>
+        </table>
+        <div class="last-update" id="last-update"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Используем прокси для обхода CORS
+            const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+            const apiUrl = 'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=securities,marketdata&securities.columns=SECID,SHORTNAME&marketdata.columns=SECID,LAST,CHANGE,LASTTOPREVPRICE';
+            
+            fetch(proxyUrl + apiUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка сети');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Обработка данных
+                    const securities = data.securities.data;
+                    const marketData = data.marketdata.data;
+                    
+                    // Объединяем данные
+                    const stocks = securities.map(security => {
+                        const marketInfo = marketData.find(item => item[0] === security[0]);
+                        return {
+                            ticker: security[0],
+                            name: security[1],
+                            price: marketInfo ? marketInfo[1] : null,
+                            change: marketInfo ? marketInfo[2] : null,
+                            changePercent: marketInfo ? marketInfo[3] : null
+                        };
+                    });
+                    
+                    // Фильтруем акции с доступными данными
+                    const validStocks = stocks.filter(stock => 
+                        stock.price !== null && stock.changePercent !== null
+                    );
+                    
+                    // Сортируем по изменению в процентах (по убыванию)
+                    validStocks.sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+                    
+                    // Берем топ-20
+                    const top20 = validStocks.slice(0, 20);
+                    
+                    // Отображаем данные
+                    displayStocks(top20);
+                })
+                .catch(error => {
+                    console.error('Ошибка:', error);
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('content').innerHTML = '<p>Не удалось загрузить данные. Пожалуйста, попробуйте позже.</p>';
+                    document.getElementById('content').style.display = 'block';
+                });
+        });
+        
+        function displayStocks(stocks) {
+            const tableBody = document.getElementById('stock-data');
+            tableBody.innerHTML = '';
+            
+            stocks.forEach((stock, index) => {
+                const row = document.createElement('tr');
+                
+                const changeClass = stock.changePercent >= 0 ? 'positive' : 'negative';
+                const changeSign = stock.changePercent >= 0 ? '+' : '';
+                
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${stock.ticker}</td>
+                    <td>${stock.name}</td>
+                    <td>${stock.price ? stock.price.toFixed(2) : 'N/A'} ₽</td>
+                    <td class="${changeClass}">${changeSign}${stock.change ? stock.change.toFixed(2) : 'N/A'} ₽</td>
+                    <td class="${changeClass}">${changeSign}${stock.changePercent ? stock.changePercent.toFixed(2) : 'N/A'} %</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+            
+            document.getElementById('last-update').textContent = `Последнее обновление: ${new Date().toLocaleString()}`;
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
